@@ -12,7 +12,7 @@ def test_prompt_has_six_parts_and_placeholder(prompt_text):
     for part in ("# Role", "# Context", "# Task", "# Constraints", "# Format", "# Examples"):
         assert part in prompt_text
     assert "{{TRANSCRIPT}}" in prompt_text
-    assert "—" not in prompt_text  # no em dashes
+    assert chr(0x2014) not in prompt_text  # no em dashes
 
 
 def test_happy_path(transcript, rx_json, prompt_text):
