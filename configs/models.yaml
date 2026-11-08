@@ -1,0 +1,21 @@
+# Versioned model and prompt config. Bump `version` whenever a model ID or prompt changes,
+# so every eval result can be traced back to exactly what produced it.
+version: 1
+
+provider:
+  name: openrouter
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+
+models:
+  default:
+    id: openai/gpt-4.1-mini
+    temperature: 0
+    max_tokens: 4000
+    # USD per million tokens. Fallback only: OpenRouter's reported cost is used when present.
+    price_per_mtok: { input: 0.40, output: 1.60 }
+
+prompts:
+  c0_extract:
+    version: v1
+    file: prompts/c0_extract.v1.md

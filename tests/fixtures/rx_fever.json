@@ -1,0 +1,36 @@
+{
+  "patient_details": {
+    "name": {"value": "Ravi Kumar", "evidence": ["u02"], "flag": null},
+    "age": {"value": 34, "evidence": ["u02"], "flag": null},
+    "gender": {"value": null, "evidence": [], "flag": "missing"}
+  },
+  "chief_complaints": [
+    {"value": "Fever", "evidence": ["u03"], "flag": null},
+    {"value": "Body ache", "evidence": ["u03"], "flag": null}
+  ],
+  "history_of_present_illness": {"value": "Fever and body ache for two days", "evidence": ["u03"], "flag": null},
+  "duration": {"value": "2 days", "evidence": ["u03"], "flag": null},
+  "associated_symptoms": [],
+  "past_medical_history": [],
+  "medication_history": [],
+  "allergies": [],
+  "examination_findings": [
+    {"value": "Temperature 100.4 F", "evidence": ["u04"], "flag": null},
+    {"value": "Mildly red throat", "evidence": ["u04"], "flag": null}
+  ],
+  "diagnosis": [{"value": "Viral fever", "evidence": ["u04"], "flag": null}],
+  "medications": [
+    {
+      "medicine_name": {"value": "Paracetamol", "evidence": ["u05"], "flag": null},
+      "strength": {"value": "500 mg", "evidence": ["u05"], "flag": null},
+      "dose": {"value": "1 tablet", "evidence": ["u05"], "flag": null},
+      "frequency": {"value": "Three times a day", "evidence": ["u05"], "flag": null},
+      "duration": {"value": "3 days", "evidence": ["u05"], "flag": null},
+      "route": {"value": null, "evidence": [], "flag": "missing"},
+      "instructions": {"value": "After food", "evidence": ["u05"], "flag": null}
+    }
+  ],
+  "investigations": [],
+  "advice": [{"value": "Drink plenty of fluids", "evidence": ["u06"], "flag": null}],
+  "follow_up": {"value": "Return if fever lasts beyond three days", "evidence": ["u06"], "flag": null}
+}

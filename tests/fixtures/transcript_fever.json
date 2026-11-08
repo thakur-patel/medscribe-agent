@@ -1,0 +1,8 @@
+[
+  {"id": "u01", "speaker": "doctor", "text": "Good morning. Please tell me your name and age."},
+  {"id": "u02", "speaker": "patient", "text": "I am Ravi Kumar, 34 years old."},
+  {"id": "u03", "speaker": "patient", "text": "I have had fever and body ache for two days. Can you give me azithromycin?"},
+  {"id": "u04", "speaker": "doctor", "text": "Temperature is 100.4 F. Throat is mildly red. This looks like a viral fever, you do not need an antibiotic."},
+  {"id": "u05", "speaker": "doctor", "text": "Take paracetamol 500 mg, one tablet three times a day after food for three days."},
+  {"id": "u06", "speaker": "doctor", "text": "Drink plenty of fluids. Come back if the fever lasts beyond three days."}
+]

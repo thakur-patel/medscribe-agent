@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Draft ePrescription {{ draft_id }}</title>
+<style>
+  @page { size: A4; margin: 16mm; }
+  body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11pt; color: #1b1b1b; }
+  h1 { font-size: 16pt; margin: 0 0 2mm; }
+  .banner { background: #fff4d6; border: 1px solid #e0b100; padding: 2mm 3mm; margin-bottom: 4mm; }
+  h2 { font-size: 11pt; text-transform: uppercase; letter-spacing: .04em; color: #555;
+       border-bottom: 1px solid #ddd; margin: 5mm 0 2mm; padding-bottom: 1mm; }
+  ul { margin: 0; padding-left: 5mm; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; border: 1px solid #ddd; padding: 1.5mm 2mm; vertical-align: top; }
+  th { background: #f3f3f3; font-size: 9pt; }
+  .ev { color: #888; font-size: 8pt; }
+  .flagged { background: #ffe1e1; border: 1px dashed #c62828; padding: 0 1mm; }
+  .flag { color: #c62828; font-size: 8pt; font-weight: bold; text-transform: uppercase; }
+  .legend { font-size: 9pt; color: #555; }
+</style>
+</head>
+<body>
+{% macro show(f) -%}
+  {%- if f.flag -%}
+    <span class="flagged">{{ f.value if f.value is not none else "not stated" }}
+      <span class="flag">{{ f.flag | replace("_", " ") }}</span></span>
+  {%- else -%}
+    {{ f.value }}
+  {%- endif -%}
+  {%- if f.evidence %} <span class="ev">[{{ f.evidence | join(", ") }}]</span>{% endif -%}
+{%- endmacro %}
+{% macro show_list(items) -%}
+  {%- if items -%}<ul>{% for f in items %}<li>{{ show(f) }}</li>{% endfor %}</ul>
+  {%- else -%}<span class="ev">none recorded</span>{%- endif -%}
+{%- endmacro %}
+
+<h1>Draft ePrescription</h1>
+<div class="banner">DRAFT for doctor review. Not valid until approved. Flagged fields need attention.
+  <span class="legend">Draft {{ draft_id }} · pipeline {{ pipeline }}</span></div>
+
+<h2>Patient</h2>
+<p>Name: {{ show(rx.patient_details.name) }} · Age: {{ show(rx.patient_details.age) }}
+   · Gender: {{ show(rx.patient_details.gender) }}</p>
+
+<h2>Chief complaints</h2>{{ show_list(rx.chief_complaints) }}
+<p>Duration: {{ show(rx.duration) }}</p>
+<h2>History of present illness</h2><p>{{ show(rx.history_of_present_illness) }}</p>
+<h2>Associated symptoms</h2>{{ show_list(rx.associated_symptoms) }}
+<h2>Past medical history</h2>{{ show_list(rx.past_medical_history) }}
+<h2>Medication history</h2>{{ show_list(rx.medication_history) }}
+<h2>Allergies</h2>{{ show_list(rx.allergies) }}
+<h2>Examination findings</h2>{{ show_list(rx.examination_findings) }}
+<h2>Diagnosis</h2>{{ show_list(rx.diagnosis) }}
+
+<h2>Medications</h2>
+{% if rx.medications %}
+<table>
+  <tr><th>Medicine</th><th>Strength</th><th>Dose</th><th>Frequency</th><th>Duration</th>
+      <th>Route</th><th>Instructions</th></tr>
+  {% for m in rx.medications %}
+  <tr><td>{{ show(m.medicine_name) }}</td><td>{{ show(m.strength) }}</td><td>{{ show(m.dose) }}</td>
+      <td>{{ show(m.frequency) }}</td><td>{{ show(m.duration) }}</td><td>{{ show(m.route) }}</td>
+      <td>{{ show(m.instructions) }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}<span class="ev">none recorded</span>{% endif %}
+
+<h2>Investigations</h2>{{ show_list(rx.investigations) }}
+<h2>Advice</h2>{{ show_list(rx.advice) }}
+<h2>Follow-up</h2><p>{{ show(rx.follow_up) }}</p>
+</body>
+</html>
