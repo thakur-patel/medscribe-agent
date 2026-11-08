@@ -1,7 +1,8 @@
 """Plain-code checkers. No LLM judges here: every metric is deterministic and explainable.
 
 Metrics per case:
-- field precision and recall: non-null predicted values vs non-null expected values.
+- field precision and recall: non-null predicted values vs non-null expected values,
+  excluding stated negatives ("no cough"), which are scored on their own as negatives recall.
 - medication exact match: name, strength, dose, frequency and duration all equal.
 - invented field rate: non-null values with no valid evidence (no IDs, or unknown IDs).
 - missing-info recall: expected-null fields that came back null and flagged, not filled.
@@ -25,8 +26,10 @@ from medscribe.schemas import (
     Transcript,
 )
 
+CHECKER_VERSION = "v2"
+
 EXACT_MED_ATTRS = ("medicine_name", "strength", "dose", "frequency", "duration")
-# Free-text sections compare by token overlap; everything else must match after normalising.
+# Free-text slots compare by content-word overlap; everything else must match after normalising.
 FUZZY_SECTIONS = {
     "history_of_present_illness",
     "chief_complaints",
@@ -40,7 +43,24 @@ FUZZY_SECTIONS = {
     "investigations",
     "allergies",
 }
+FUZZY_MED_ATTRS = {"instructions"}
+# Overlap coefficient: shared content words / words in the shorter value.
 FUZZY_THRESHOLD = 0.5
+# Neighbouring sections that hold the same kind of item. A value in either one counts.
+SECTION_GROUPS = {
+    "chief_complaints": "symptoms",
+    "associated_symptoms": "symptoms",
+    "advice": "plan",
+    "follow_up": "plan",
+}
+NEGATION_WORDS = {"no", "not", "none", "nil", "nkda", "denies", "denied", "without", "never"}
+STOPWORDS = {
+    "a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at", "with", "from", "by",
+    "is", "are", "was", "be", "been", "it", "this", "that", "if", "as", "any", "some", "since",
+    "when", "while", "you", "your", "i", "my", "he", "she", "they", "take", "do", "does", "get",
+    "known", "mild", "little", "very", "about", "around", "like", "other", "patient",
+}  # fmt: skip
+_SUFFIXES = ("ness", "ing", "ed", "es", "s")
 
 _NUMBER_WORDS = {
     "one": "1",
@@ -56,6 +76,11 @@ _NUMBER_WORDS = {
     "fourteen": "14",
     "thirty": "30",
 }
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
+         "eighty": 80, "ninety": 90}  # fmt: skip
+_UNITS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
+          "nine": 9}  # fmt: skip
+_COMPOUND = re.compile(r"\b(" + "|".join(_TENS) + r")[- ](" + "|".join(_UNITS) + r")\b")
 _PLURALS = {"days": "day", "weeks": "week", "months": "month", "tablets": "tablet"}
 _FREQUENCY = {
     "od": "od",
@@ -87,12 +112,19 @@ _FREQUENCY = {
     "as needed": "sos",
     "when needed": "sos",
     "when required": "sos",
+    "if needed": "sos",
+    "as needed for fever": "sos",
+    "when you have fever": "sos",
+    "if fever": "sos",
+    "only if fever": "sos",
 }
 
 
 def normalize(value: object, attr: str | None = None) -> str:
     text = str(value).lower()
     text = re.sub(r"(\d)\s*(mg|ml|g|mcg)\b", r"\1 \2", text)
+    text = _COMPOUND.sub(lambda m: str(_TENS[m[1]] + _UNITS[m[2]]), text)  # forty-five -> 45
+    text = re.sub(r"\b(" + "|".join(_TENS) + r")\b", lambda m: str(_TENS[m[1]]), text)
     text = re.sub(r"[^\w\s./%]", " ", text)
     words = [_NUMBER_WORDS.get(w, w) for w in text.split()]
     words = [_PLURALS.get(w, w) for w in words]
@@ -102,8 +134,26 @@ def normalize(value: object, attr: str | None = None) -> str:
     return text
 
 
-def _tokens(text: str) -> set[str]:
-    return {t for t in re.split(r"\W+", text) if t}
+def _stem(word: str) -> str:
+    for suffix in _SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            return word[: -len(suffix)]
+    return word
+
+
+def content_words(text: str) -> set[str]:
+    words = (w for w in re.split(r"[^\w.]+", text) if w and w != ".")
+    return {_stem(w) for w in words if w not in STOPWORDS and w not in NEGATION_WORDS}
+
+
+def _numbers(text: str) -> set[str]:
+    return set(re.findall(r"\d+(?:\.\d+)?", text))
+
+
+def is_negative(text: str) -> bool:
+    """A stated negative such as 'no cough' or 'none': the first word is a negation."""
+    first = text.split()[0] if text.split() else ""
+    return first in NEGATION_WORDS
 
 
 def values_match(a: str, b: str, fuzzy: bool) -> bool:
@@ -111,41 +161,52 @@ def values_match(a: str, b: str, fuzzy: bool) -> bool:
         return True
     if not fuzzy:
         return False
-    ta, tb = _tokens(a), _tokens(b)
-    if not ta or not tb:
+    if is_negative(a) != is_negative(b):  # "no fever" never matches "fever"
         return False
-    return len(ta & tb) / len(ta | tb) >= FUZZY_THRESHOLD
+    na, nb = _numbers(a), _numbers(b)
+    if na and nb and na != nb:  # "after 3 days" never matches "after 7 days"
+        return False
+    ca, cb = content_words(a), content_words(b)
+    if not ca or not cb:
+        # Bare negatives like "none" match any negative in the same slot ("no known allergies").
+        return is_negative(a) and is_negative(b)
+    return len(ca & cb) / min(len(ca), len(cb)) >= FUZZY_THRESHOLD
 
 
 @dataclass(frozen=True)
 class Item:
-    key: str  # what slot this value fills, e.g. "diagnosis" or "medications.dose|paracetamol"
+    key: str  # the slot this value fills, e.g. "symptoms" or "medications.dose|paracetamol"
     value: str
     fuzzy: bool
+    negative: bool = False
 
 
 def items(rx: Prescription) -> list[Item]:
     out: list[Item] = []
 
-    def add(key: str, f: Field, section: str, attr: str | None = None) -> None:
-        if f.value is not None:
-            out.append(Item(key, normalize(f.value, attr), section in FUZZY_SECTIONS))
+    def add(key: str, f: Field, fuzzy: bool, attr: str | None = None, neg: bool = False) -> None:
+        if f.value is None:
+            return
+        value = normalize(f.value, attr)
+        out.append(Item(key, value, fuzzy, neg and is_negative(value)))
 
     for attr in ("name", "age", "gender"):
-        add(f"patient_details.{attr}", getattr(rx.patient_details, attr), "patient_details")
+        add(f"patient_details.{attr}", getattr(rx.patient_details, attr), False)
     for section in SCALAR_SECTIONS:
-        add(section, getattr(rx, section), section)
+        add(SECTION_GROUPS.get(section, section), getattr(rx, section), section in FUZZY_SECTIONS)
     for section in LIST_SECTIONS:
         for f in getattr(rx, section):
-            add(section, f, section)
+            add(SECTION_GROUPS.get(section, section), f, section in FUZZY_SECTIONS, neg=True)
     for med in rx.medications:
         name = normalize(med.medicine_name.value) if med.medicine_name.value else "?"
         for attr in MEDICATION_ATTRS:
-            add(f"medications.{attr}|{name}", getattr(med, attr), "medications", attr)
+            key = f"medications.{attr}|{name}"
+            add(key, getattr(med, attr), attr in FUZZY_MED_ATTRS, attr)
     return out
 
 
 def match_count(pred: list[Item], expected: list[Item]) -> int:
+    """One-to-one matching: each predicted item can satisfy at most one expected item."""
     unused = list(pred)
     tp = 0
     for exp in expected:
@@ -217,6 +278,9 @@ class CaseMetrics:
     field_tp: int
     field_pred: int
     field_expected: int
+    neg_tp: int
+    neg_pred: int
+    neg_expected: int
     med_exact: int
     med_pred: int
     med_expected: int
@@ -240,8 +304,12 @@ def score_case(
     transcript: Transcript,
 ) -> CaseMetrics:
     """Score one case. `final is None` means the run failed: it scores zero, it is not skipped."""
-    exp_items = items(expected)
-    pred_items = items(final) if final is not None else []
+    all_exp = items(expected)
+    all_pred = items(final) if final is not None else []
+    exp_items = [i for i in all_exp if not i.negative]
+    pred_items = [i for i in all_pred if not i.negative]
+    exp_neg = [i for i in all_exp if i.negative]
+    pred_neg = [i for i in all_pred if i.negative]
     exp_meds = _med_index(expected)
     pred_meds = _med_index(final) if final is not None else {}
     med_exact = sum(
@@ -267,6 +335,9 @@ def score_case(
         field_tp=match_count(pred_items, exp_items),
         field_pred=len(pred_items),
         field_expected=len(exp_items),
+        neg_tp=match_count(pred_neg, exp_neg),
+        neg_pred=len(pred_neg),
+        neg_expected=len(exp_neg),
         med_exact=med_exact,
         med_pred=len(pred_meds),
         med_expected=len(exp_meds),
@@ -291,6 +362,8 @@ def aggregate(cases: list[CaseMetrics]) -> dict[str, float | int | None]:
     return {
         "field_precision": _ratio(total["field_tp"], total["field_pred"]),
         "field_recall": _ratio(total["field_tp"], total["field_expected"]),
+        "negatives_recall": _ratio(total["neg_tp"], total["neg_expected"]),
+        "negatives_extra": total["neg_pred"] - total["neg_tp"],
         "med_exact_recall": _ratio(total["med_exact"], total["med_expected"]),
         "med_exact_precision": _ratio(total["med_exact"], total["med_pred"]),
         "missing_info_recall": _ratio(total["missing_recalled"], total["missing_expected"]),

@@ -19,7 +19,7 @@ from pathlib import Path
 import yaml
 
 from eval.cases import Case, load_cases
-from eval.checkers import CaseMetrics, aggregate, score_case
+from eval.checkers import CHECKER_VERSION, CaseMetrics, aggregate, score_case
 from medscribe.config import REPO_ROOT, load_config
 from medscribe.llm import LLM, OpenRouterLLM
 from medscribe.pipeline import PIPELINE_VERSION, draft
@@ -123,6 +123,7 @@ def run_eval(config_path: str | Path, llm: LLM | None = None, out_root: Path | N
         "model": model.id,
         "prompt": f"{prompt.key}@{prompt.version}",
         "models_config_version": app_cfg.version,
+        "checker_version": CHECKER_VERSION,
         "timestamp": stamp,
     }
     summary = summarize(records, meta)

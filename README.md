@@ -60,12 +60,31 @@ This runs every case in `eval/golden/dev/` and writes `eval/results/<timestamp>-
 
 | Metric | Meaning |
 |---|---|
-| `field_precision`, `field_recall` | Non-null predicted values vs expected values. Free-text sections match on token overlap (Jaccard 0.5 or more); names, numbers and medication fields must match after normalising (units, number words, `TDS` = `three times a day`). |
+| `field_precision`, `field_recall` | Non-null predicted values vs expected values, excluding stated negatives. See "How matching works" below. |
+| `negatives_recall`, `negatives_extra` | Stated negatives ("no known drug allergies", "no rash"). Recall covers the negatives the golden case expects; extras are other negatives the model recorded, reported but not penalised, since golden cases do not list every negative. |
 | `med_exact_recall`, `med_exact_precision` | A medication counts only if name, strength, dose, frequency and duration all match. |
 | `missing_info_recall` | Of the fields that were never stated, how many came back null and flagged instead of filled. |
 | `invented_rate_raw`, `invented_rate_final` | Share of non-null values with no evidence or with line IDs that do not exist. Raw is what the model wrote; final is after the post-check. |
 | `speaker_violations_raw`, `speaker_violations_final` | Diagnosis or medication fields citing a patient line. |
 | `cost_usd_*`, `latency_s_median`, `latency_s_p95` | Per case. Cost is OpenRouter's reported cost, or computed from the prices in `configs/models.yaml`. |
+
+### How matching works (checker v2)
+
+Fair on wording, strict on meaning. Every summary records its `checker_version`.
+
+- **Everything is normalised first:** lower case, units (`500mg` = `500 mg`), number words (`forty-five` = `45`), plurals of days and tablets, and frequency synonyms (`TDS` = `three times a day`, `when you have fever` = `SOS`).
+- **Medication name, strength, dose, frequency and duration, and patient details, must match exactly** after normalising. "Twice a day before food" is not a frequency of "twice a day".
+- **Free-text items** (symptoms, history, findings, diagnosis, investigations, advice, follow-up, allergies, medication instructions) match when at least half the content words of the shorter value appear in the other. Content words skip filler words and are lightly stemmed (`breathlessness` = `breathless`).
+- **Numbers and negation must agree.** "After 3 days" never matches "after 7 days", "BP 152/96" never matches "BP 128/82", and "no fever" never matches "fever".
+- **Neighbouring sections count:** chief complaints and associated symptoms are one pool, and so are advice and follow-up.
+- **Matching is one-to-one:** one predicted item can satisfy only one expected item.
+- **Known leniency:** a short history of present illness matches a longer expected one if it is mostly contained in it.
+
+To re-score a saved run with the current checkers (no model calls, so model outputs stay fixed):
+
+```bash
+uv run python -m eval.rescore eval/results/<run-folder>
+```
 
 ### Golden cases
 
@@ -98,22 +117,26 @@ transcript JSON
 
 `openai/gpt-4.1-mini`, prompt `c0_extract@v1`, 10 dev seed cases (still a draft pending clinical review).
 
-| Metric | C0 |
-|---|---|
-| Failed runs / retries | 0 / 0 |
-| Field precision / recall | 0.777 / 0.804 |
-| Medication exact match | 0.750 (12 of 16) |
-| Missing-info recall | 0.979 |
-| Invented rate (raw and final) | 0.000 |
-| Speaker violations (raw and final) | 0 |
-| Cost per case | $0.0018 |
-| Latency median / p95 | 6.1 s / 7.8 s |
+The same model outputs scored with both checker versions. Checker v1 was too literal; v2 is the reference from now on.
+
+| Metric | C0, checker v1 | C0, checker v2 |
+|---|---|---|
+| Failed runs / retries | 0 / 0 | 0 / 0 |
+| Field precision / recall | 0.777 / 0.804 | **0.940 / 0.923** |
+| Negatives recall | n/a | 0.800 (13 extra negatives recorded) |
+| Medication exact match | 0.750 (12 of 16) | **0.812 (13 of 16)** |
+| Missing-info recall | 0.979 | 0.979 |
+| Invented rate (raw and final) | 0.000 | 0.000 |
+| Speaker violations (raw and final) | 0 | 0 |
+| Cost per case | $0.0018 | $0.0018 |
+| Latency median / p95 | 6.1 s / 7.8 s | 6.1 s / 7.8 s |
 
 What the misses are:
 
 - **Safety held on every case.** No invented values, no patient-requested drug (dev-009), no confirmed dengue (dev-010), no hydralazine mix-up (dev-007), and unstated doses and frequencies came back null and flagged (dev-005, dev-006).
-- **Real model errors: merged fields.** 3 of the 4 medication misses are values put in the wrong attribute, for example "twice a day before food" as the frequency or "1 glass after every loose motion" as the dose. One medicine got its purpose ("helps itching") as its instruction.
-- **Most field misses are the scoring, not the model.** Same meaning in other words ("sometimes acidity" vs "occasional acidity", "none" vs "no known drug allergies"), the same item in a neighbouring section (follow-up written under advice, a symptom under chief complaints instead of associated symptoms), and stated negatives ("no cough") counted as extra items.
+- **The main real error: merged medication fields.** All 3 medication misses put a value in the wrong attribute: "twice a day before food" as a frequency, "1 glass after every loose motion" as a dose, and "up to 3 times a day only when temperature is above 100" as a frequency. Related: one medicine got its purpose ("helps itching") as its instruction, the one missing-info miss.
+- **Smaller real errors:** several findings packed into one item (dev-007), a route the doctor did state left empty (nasal drops, dev-009), and past azithromycin use not recorded (dev-009).
+- **Prompt v2 should target** separate frequency, dose and instructions, one item per finding, and where stated negatives go.
 
 ## What comes next
 
