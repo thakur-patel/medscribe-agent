@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -35,7 +35,7 @@ def create_app(llm: LLM | None = None, config: AppConfig | None = None) -> FastA
         return result
 
     @app.post("/draft")
-    def create_draft(payload: Any = Body(...)) -> dict:
+    def create_draft(payload: Annotated[Any, Body()]) -> dict:
         try:
             transcript = Transcript.model_validate(payload)
         except ValidationError as exc:
