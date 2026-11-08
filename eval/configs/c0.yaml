@@ -1,0 +1,9 @@
+# Eval config for C0, the fixed baseline. Model IDs and prompt files live in configs/models.yaml.
+name: c0
+pipeline: c0
+model: default
+prompt: c0_extract
+split: dev
+golden_dir: eval/golden
+results_dir: eval/results
+concurrency: 4

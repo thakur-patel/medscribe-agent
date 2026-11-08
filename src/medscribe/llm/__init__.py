@@ -78,9 +78,7 @@ class OpenRouterLLM:
         tout = getattr(usage, "completion_tokens", 0) or 0
         cost = getattr(usage, "cost", None)
         if cost is None:
-            cost = (
-                tin * self.model.price_in_per_mtok + tout * self.model.price_out_per_mtok
-            ) / 1e6
+            cost = (tin * self.model.price_in_per_mtok + tout * self.model.price_out_per_mtok) / 1e6
         return LLMResponse(
             text=resp.choices[0].message.content or "",
             model=resp.model or self.model.id,
