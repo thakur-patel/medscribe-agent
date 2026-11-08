@@ -94,6 +94,27 @@ transcript JSON
 - **List sections.** Sections like `diagnosis` and `advice` are lists of fields, one per item, so each item has its own evidence. An empty list means nothing was said; missing-info recall only covers single-value fields and the attributes of expected medications.
 - **Missing fields in golden cases** are simply left out of `expected_prescription`; the schema fills them as null with flag `missing`.
 
+### C0 baseline (2026-11-08)
+
+`openai/gpt-4.1-mini`, prompt `c0_extract@v1`, 10 dev seed cases (still a draft pending clinical review).
+
+| Metric | C0 |
+|---|---|
+| Failed runs / retries | 0 / 0 |
+| Field precision / recall | 0.777 / 0.804 |
+| Medication exact match | 0.750 (12 of 16) |
+| Missing-info recall | 0.979 |
+| Invented rate (raw and final) | 0.000 |
+| Speaker violations (raw and final) | 0 |
+| Cost per case | $0.0018 |
+| Latency median / p95 | 6.1 s / 7.8 s |
+
+What the misses are:
+
+- **Safety held on every case.** No invented values, no patient-requested drug (dev-009), no confirmed dengue (dev-010), no hydralazine mix-up (dev-007), and unstated doses and frequencies came back null and flagged (dev-005, dev-006).
+- **Real model errors: merged fields.** 3 of the 4 medication misses are values put in the wrong attribute, for example "twice a day before food" as the frequency or "1 glass after every loose motion" as the dose. One medicine got its purpose ("helps itching") as its instruction.
+- **Most field misses are the scoring, not the model.** Same meaning in other words ("sometimes acidity" vs "occasional acidity", "none" vs "no known drug allergies"), the same item in a neighbouring section (follow-up written under advice, a symptom under chief complaints instead of associated symptoms), and stated negatives ("no cough") counted as extra items.
+
 ## What comes next
 
 C0 is the baseline every later version is measured against. Planned, not built yet:
